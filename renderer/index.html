@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; frame-src https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self';" />
+  <title>YouTube Notes</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="vendor/katex/katex.min.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">YouTube Notes</div>
+    <div class="url-bar">
+      <input id="url-input" type="text" placeholder="Paste a YouTube URL or video ID..." spellcheck="false" />
+      <button id="generate-btn" class="primary">Generate Notes</button>
+    </div>
+    <div class="topbar-actions">
+      <label class="provider-switcher" title="Active LLM provider">
+        <span class="provider-switcher-label">LLM:</span>
+        <select id="active-provider-select"></select>
+      </label>
+      <button id="open-folder-btn" title="Open notes folder">📂</button>
+      <button id="settings-btn" title="Settings">⚙</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-header">
+          <span>★ Favorites</span>
+        </div>
+        <ul id="favorites-list" class="note-list"></ul>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-header">
+          <span>📁 All Notes</span>
+          <span class="sidebar-header-actions">
+            <button id="open-notes-dir-btn" class="icon-btn" title="Open notes folder in your OS file explorer">📂</button>
+            <button id="new-folder-btn" class="icon-btn" title="New folder at top level">＋</button>
+          </span>
+        </div>
+        <div id="folder-tree"></div>
+      </div>
+    </aside>
+
+    <section class="content">
+      <div id="empty-state" class="empty-state">
+        <h2>No note selected</h2>
+        <p>Paste a YouTube URL above and click <b>Generate Notes</b>, or pick a saved note from the sidebar.</p>
+        <p class="hint">First time? Open <b>Settings</b> (⚙) to add a free API key.</p>
+      </div>
+
+      <div id="note-view" class="note-view hidden">
+        <div class="note-toolbar">
+          <div class="note-title-wrap">
+            <h2 class="note-title-h2">
+              <a id="note-title" href="#" target="_blank" rel="noopener noreferrer" title="Open on YouTube"></a>
+              <span id="note-title-link-icon" class="link-icon" title="Opens on YouTube">↗</span>
+            </h2>
+            <div class="note-meta">
+              <span id="note-author"></span>
+              <span id="note-updated"></span>
+            </div>
+          </div>
+          <div class="note-actions">
+            <button id="favorite-btn" title="Toggle favorite">☆</button>
+            <span class="download-video-wrap">
+              <button id="download-video-btn" title="Download this YouTube video to the note folder">⬇ Video</button>
+              <span id="download-video-status" class="download-status" hidden></span>
+            </span>
+            <button id="open-video-btn" title="Play the downloaded video in your default video player">▶ Open</button>
+            <label class="tldr-control" title="Number of bullets in the TL;DR view">
+              <span id="tldr-length-label">TL;DR: 5</span>
+              <input id="tldr-length-slider" type="range" min="3" max="15" value="5" />
+            </label>
+            <button id="rename-btn" title="Rename">✎</button>
+            <button id="delete-btn" title="Delete" class="danger">🗑</button>
+          </div>
+        </div>
+
+        <div class="notes-pane">
+          <div class="notes-modes">
+            <button id="mode-preview" class="mode active" title="Full-width preview only">Preview</button>
+            <button id="mode-tldr" class="mode" title="Condensed bullet summary">TL;DR</button>
+            <button id="mode-edit" class="mode" title="Editor and live preview side-by-side">Edit</button>
+            <button id="regenerate-btn" class="regen-btn" title="Regenerate summary from the transcript (overwrites current notes)">↻</button>
+            <span class="save-status" id="save-status">Saved</span>
+          </div>
+          <div class="notes-body preview-only">
+            <textarea id="notes-editor" spellcheck="false" placeholder="Notes will appear here..."></textarea>
+            <div id="notes-preview" class="markdown-body"></div>
+            <div id="notes-tldr" class="markdown-body"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="progress-overlay" class="overlay hidden">
+        <div class="overlay-card">
+          <div class="spinner"></div>
+          <div id="progress-text">Working...</div>
+          <ul id="progress-steps">
+            <li data-step="metadata">Fetching video info</li>
+            <li data-step="transcript">Pulling transcript</li>
+            <li data-step="summarize">Summarizing with LLM</li>
+            <li data-step="save">Saving notes</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Settings dialog -->
+  <dialog id="settings-dialog" class="dialog dialog-wide">
+    <div class="dialog-form">
+      <div class="dialog-scroll">
+        <h2>Settings</h2>
+
+        <fieldset>
+          <legend>Storage</legend>
+          <label>Notes folder
+            <div class="row">
+              <input id="setting-notes-dir" type="text" readonly />
+              <button type="button" id="choose-dir-btn">Choose...</button>
+            </div>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>LLM providers</legend>
+          <p class="hint">Pick which provider is active with the radio button. Edit, test, or delete each one. Add a new one from a template below.</p>
+          <div id="provider-list" class="provider-list"></div>
+
+          <div class="add-provider">
+            <span class="add-label">Add provider:</span>
+            <button type="button" data-template="gemini">+ Gemini</button>
+            <button type="button" data-template="groq">+ Groq</button>
+            <button type="button" data-template="openrouter">+ OpenRouter</button>
+            <button type="button" data-template="ollama">+ Ollama (local)</button>
+            <button type="button" data-template="lmstudio">+ LM Studio (local)</button>
+            <button type="button" data-template="custom">+ Custom</button>
+          </div>
+        </fieldset>
+      </div>
+
+      <div class="dialog-actions">
+        <button type="button" id="settings-close" class="primary">Done</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Video download / resolution picker -->
+  <dialog id="video-dialog" class="dialog">
+    <div class="dialog-form">
+      <div class="dialog-scroll">
+        <h2>Download video</h2>
+        <p class="hint" id="video-info">Loading available formats...</p>
+        <div id="video-formats"></div>
+        <p class="hint" id="video-progress" style="display:none;"></p>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" id="video-cancel-btn">Cancel</button>
+        <button type="button" id="video-download-btn" class="primary" disabled>Download</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Generic prompt dialog -->
+  <dialog id="prompt-dialog" class="dialog">
+    <div class="dialog-form">
+      <div class="dialog-scroll">
+        <h2 id="prompt-title">Enter value</h2>
+        <p id="prompt-message" class="hint" style="margin-top:-4px;"></p>
+        <input id="prompt-input" type="text" autocomplete="off" style="width:100%;" />
+      </div>
+      <div class="dialog-actions">
+        <button type="button" id="prompt-cancel">Cancel</button>
+        <button type="button" id="prompt-ok" class="primary">OK</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Provider edit row template -->
+  <template id="provider-row-template">
+    <div class="provider-row">
+      <div class="provider-summary">
+        <label class="provider-radio">
+          <input type="radio" name="active-provider" />
+          <div class="provider-info">
+            <div class="provider-label-line">
+              <span class="provider-label-text"></span>
+              <span class="provider-type-tag"></span>
+            </div>
+            <div class="provider-detail"></div>
+          </div>
+        </label>
+        <div class="provider-actions">
+          <button type="button" class="test-btn">Test</button>
+          <button type="button" class="edit-btn">Edit</button>
+          <button type="button" class="delete-btn danger" title="Delete">×</button>
+        </div>
+      </div>
+      <div class="provider-edit hidden">
+        <div class="edit-grid">
+          <label>Label
+            <input class="f-label" type="text" placeholder="My provider" />
+          </label>
+          <label class="f-baseurl-wrap">Base URL
+            <input class="f-baseurl" type="text" placeholder="https://api.example.com/v1" />
+          </label>
+          <label>API key
+            <input class="f-apikey" type="password" autocomplete="off" placeholder="(blank for local Ollama / LM Studio)" />
+          </label>
+          <label>Model
+            <div class="row">
+              <input class="f-model" type="text" placeholder="model-name" />
+              <button type="button" class="refresh-models-btn" title="List models from this endpoint">↻</button>
+            </div>
+            <select class="f-model-select hidden"></select>
+          </label>
+        </div>
+        <p class="provider-help hint"></p>
+        <div class="edit-actions">
+          <button type="button" class="cancel-edit">Cancel</button>
+          <button type="button" class="save-edit primary">Save</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

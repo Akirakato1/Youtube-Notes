@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; media-src media:; img-src 'self' data:; connect-src 'self';" />
+  <title>Video</title>
+  <style>
+    html, body { margin: 0; height: 100vh; background: #000; overflow: hidden; }
+    body { display: flex; flex-direction: column; color: #ddd; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; }
+    #title-bar {
+      background: #1e1f22; padding: 6px 12px; font-size: 12px;
+      border-bottom: 1px solid #3f4147; user-select: none;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0;
+    }
+    #v { flex: 1; min-height: 0; width: 100%; background: #000; outline: none; }
+    #v[hidden] { display: none; }
+    #err {
+      flex: 1; min-height: 0; padding: 24px 32px; overflow-y: auto;
+      font-family: ui-monospace, Consolas, monospace; font-size: 13px; line-height: 1.55;
+    }
+    #err h2 { color: #e35858; font-family: -apple-system, "Segoe UI", sans-serif; margin: 0 0 12px; }
+    #err .row { margin: 6px 0; }
+    #err .label { color: #8a8d92; display: inline-block; min-width: 130px; }
+    #err .value { color: #e8e8e8; word-break: break-all; }
+    #err .code { color: #e35858; }
+    #err .ok { color: #44b977; }
+    #err .canplay { padding-left: 130px; font-size: 12px; }
+    #err button {
+      background: #5865f2; color: #fff; border: 0; border-radius: 6px;
+      padding: 10px 20px; font-size: 14px; cursor: pointer; margin: 18px 6px 0 0;
+    }
+    #err button.secondary { background: #3f4147; }
+    #err button:hover { filter: brightness(1.15); }
+    #err .hint { color: #8a8d92; font-size: 12px; line-height: 1.5; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <div id="title-bar"></div>
+  <video id="v" controls autoplay></video>
+  <div id="err" hidden></div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const src = params.get('src');
+    const title = params.get('title') || 'Video';
+    const filePath = params.get('filePath') || '';
+    const notePath = params.get('notePath') || '';
+    const startPosition = parseFloat(params.get('position') || '0') || 0;
+
+    document.getElementById('title-bar').textContent = title;
+    document.title = title;
+    const v = document.getElementById('v');
+    const errDiv = document.getElementById('err');
+
+    // ---- run codec self-test once on load ----
+    // Helps decide: is the file the problem, or is this Electron build missing
+    // the codec entirely? Chromium's canPlayType returns 'probably', 'maybe', or ''.
+    function canPlayReport() {
+      const probes = [
+        ['H.264 baseline + AAC',  'video/mp4; codecs="avc1.42E01E, mp4a.40.2"'],
+        ['H.264 main + AAC',      'video/mp4; codecs="avc1.4D401E, mp4a.40.2"'],
+        ['H.264 high + AAC',      'video/mp4; codecs="avc1.640028, mp4a.40.2"'],
+        ['VP9 + Opus (webm)',     'video/webm; codecs="vp9, opus"'],
+        ['AV1 + Opus (webm)',     'video/webm; codecs="av01.0.05M.08, opus"'],
+        ['AV1 + AAC (mp4)',       'video/mp4; codecs="av01.0.05M.08, mp4a.40.2"'],
+      ];
+      const t = document.createElement('video');
+      return probes.map(([name, type]) => {
+        const r = t.canPlayType(type) || 'no';
+        return { name, type, result: r };
+      });
+    }
+
+    function escape(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    const MEDIA_ERR_NAMES = {
+      1: 'MEDIA_ERR_ABORTED — fetch aborted by the user/agent.',
+      2: 'MEDIA_ERR_NETWORK — network failure during fetch.',
+      3: 'MEDIA_ERR_DECODE — bytes decoded but the decoder errored mid-playback.',
+      4: 'MEDIA_ERR_SRC_NOT_SUPPORTED — Chromium will not play this src/format.',
+    };
+
+    function showError() {
+      const err = v.error;
+      const codeNum = err ? err.code : null;
+      const codeName = codeNum ? MEDIA_ERR_NAMES[codeNum] : 'no MediaError object';
+      const errMsg = err && err.message ? err.message : '(none)';
+
+      const probes = canPlayReport();
+      const probesHtml = probes
+        .map((p) => `<div><span class="${p.result === 'probably' || p.result === 'maybe' ? 'ok' : 'code'}">${escape(p.result)}</span> · ${escape(p.name)} · <small style="color:#666">${escape(p.type)}</small></div>`)
+        .join('');
+
+      // Surface the same info to console for DevTools.
+      console.error('[media-player] playback failed', {
+        src, filePath, code: codeNum, codeName, message: errMsg, networkState: v.networkState, readyState: v.readyState,
+        probes,
+      });
+
+      v.hidden = true;
+      errDiv.hidden = false;
+      errDiv.innerHTML = `
+        <h2>Could not play this video in the embedded player.</h2>
+        <div class="row"><span class="label">Error code:</span><span class="value code">${escape(codeNum || 'n/a')} — ${escape(codeName)}</span></div>
+        <div class="row"><span class="label">Browser msg:</span><span class="value">${escape(errMsg)}</span></div>
+        <div class="row"><span class="label">networkState:</span><span class="value">${v.networkState} <small style="color:#666">(0=empty 1=idle 2=loading 3=no-source)</small></span></div>
+        <div class="row"><span class="label">readyState:</span><span class="value">${v.readyState} <small style="color:#666">(0=nothing 1=metadata 2=current 3=future 4=enough)</small></span></div>
+        <div class="row"><span class="label">media URL:</span><span class="value">${escape(src)}</span></div>
+        <div class="row"><span class="label">file path:</span><span class="value">${escape(filePath)}</span></div>
+        <div class="row" style="margin-top:14px;"><span class="label">canPlayType probes:</span></div>
+        <div class="canplay">${probesHtml}</div>
+        <div>
+          <button id="open-external">Open in your default video player</button>
+          <button id="copy-debug" class="secondary">Copy debug info</button>
+        </div>
+        <p class="hint">If <i>H.264 main + AAC</i> shows "no" above, this Electron build is missing proprietary codecs — switching to <code>@castlabs/electron-releases</code> would fix it. If it shows "probably" but the video still fails, the issue is something specific about the file (profile/level, exotic stream layout) or the protocol handler.</p>
+      `;
+      document.getElementById('open-external').addEventListener('click', async () => {
+        try {
+          await window.player.openExternal(filePath);
+          window.close();
+        } catch (e) {
+          alert('Could not open externally: ' + (e.message || e));
+        }
+      });
+      document.getElementById('copy-debug').addEventListener('click', () => {
+        const debug = JSON.stringify({
+          code: codeNum, codeName, message: errMsg,
+          networkState: v.networkState, readyState: v.readyState,
+          src, filePath, probes,
+          userAgent: navigator.userAgent,
+        }, null, 2);
+        navigator.clipboard.writeText(debug);
+      });
+    }
+
+    if (!src) {
+      v.hidden = true;
+      errDiv.hidden = false;
+      errDiv.innerHTML = '<h2>No video source provided.</h2>';
+    } else {
+      v.addEventListener('error', showError);
+      // 'stalled' fires too readily on local files; use 'error' as the trigger.
+      v.src = src;
+
+      // Resume from the last saved position once we know the duration.
+      if (startPosition > 0) {
+        v.addEventListener('loadedmetadata', () => {
+          // Don't seek past the end — could happen if the file was replaced
+          // with a shorter one. Leave a 1s safety margin.
+          if (startPosition < v.duration - 1) {
+            v.currentTime = startPosition;
+          }
+        }, { once: true });
+      }
+
+      // Persist current playback position so the next ▶ Open resumes here.
+      // Throttled to ~once every 5s during playback, plus immediate save on
+      // pause / seek / before-unload. On 'ended' we save 0 so the next
+      // open starts from the beginning rather than just-after-end.
+      let lastSavedAt = 0;
+      const SAVE_INTERVAL_S = 5;
+      function savePosition(force) {
+        if (!notePath || !window.player) return;
+        const now = v.currentTime;
+        if (!force && Math.abs(now - lastSavedAt) < SAVE_INTERVAL_S) return;
+        lastSavedAt = now;
+        try { window.player.savePosition(notePath, now); } catch (_) {}
+      }
+      v.addEventListener('timeupdate', () => savePosition(false));
+      v.addEventListener('pause', () => savePosition(true));
+      v.addEventListener('seeked', () => savePosition(true));
+      v.addEventListener('ended', () => {
+        if (window.player) {
+          try { window.player.savePosition(notePath, 0); } catch (_) {}
+        }
+      });
+      window.addEventListener('beforeunload', () => savePosition(true));
+    }
+  </script>
+</body>
+</html>

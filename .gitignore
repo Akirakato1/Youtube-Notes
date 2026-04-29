@@ -1,0 +1,8 @@
+node_modules/
+dist/
+out/
+bin/
+renderer/vendor/
+.claude/
+.DS_Store
+*.log
