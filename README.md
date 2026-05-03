@@ -313,29 +313,8 @@ For code signing, auto-update setup, and other distribution details, see the com
 ## Limitations
 
 - **Transcript availability:** the app uses YouTube's auto-captions. If the uploader disabled captions, or the video is brand new and YouTube hasn't generated them yet, generation will fail with a clear error. Live streams typically don't have transcripts until the VOD is processed.
-- **Long videos:** very long transcripts (multi-hour podcasts) may exceed your model's context window. For these, prefer `gemini-2.0-flash` (1M context).
+- **Long videos:** very long transcripts (multi-hour podcasts) may exceed your model's context window.
 - **AV1 video:** Chromium often can't decode AV1 in Electron, so AV1-only formats aren't offered in the download picker. The H.264 / VP9 alternatives at the same or one-step-down resolution are always present.
 - **Network:** transcript scraping needs internet. Generation needs internet for cloud providers; Ollama / LM Studio run fully offline once the model is pulled.
 
----
 
-## Where to put screenshots
-
-Save your screenshots into the `screenshots/` folder using these exact filenames so the embeds above resolve correctly:
-
-| Filename | What to capture |
-|---|---|
-| `01-main-window.png` | Full window with a saved note open — sidebar visible, top bar visible, Preview mode with rendered content. |
-| `02-empty-state.png` | Fresh launch view ("No note selected"). |
-| `03-generate-progress.png` | The progress overlay during generation, ideally with one step active and earlier steps marked done. |
-| `04-note-preview.png` | A note in **Preview** mode showing rendered headings, bullets, and at least one bit of inline math. |
-| `05-note-edit.png` | A note in **Edit** mode — split editor on the left, live preview on the right. |
-| `06-note-tldr.png` | A note in **TL;DR** mode — italicized thesis line on top, then bulleted summary. |
-| `07-sidebar-folders.png` | The sidebar with nested folders, at least one favorite, and the folder tree expanded. |
-| `08-settings.png` | The Settings dialog with two or three providers configured. |
-| `09-settings-edit.png` | The Settings dialog with one provider's edit form expanded (label / base URL / API key / model fields visible). |
-| `10-video-download.png` | The video download dialog with a list of resolutions, ideally with one row selected. |
-| `11-video-player.png` | The embedded video player window playing a downloaded video. |
-| `12-math-rendering.png` | Close-up of rendered math: an inline expression, a display equation, and ideally a matrix or `\begin{aligned}` block. |
-
-PNG is preferred (lossless). If you crop, leave a small margin so the UI chrome is visible.
